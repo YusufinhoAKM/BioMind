@@ -21,6 +21,8 @@ if not BOT_TOKEN or not OPENAI_KEY or not ASSISTANT_ID:
     raise SystemExit("❌ Проверь BOT_TOKEN, OPENAI_KEY и ASSISTANT_ID в .env")
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("httpx").setLevel(logging.WARNING)  # чтобы INFO-запросы не выводились
+
 client = OpenAI(api_key=OPENAI_KEY)
 
 # ---------- Команды ----------
@@ -35,7 +37,7 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action(action="typing")
 
     try:
-        # Создаём новый thread для каждого запроса
+        # Создаём новый thread для каждого запроса (не сохраняем предыдущий контекст)
         thread = client.beta.threads.create()
 
         # Добавляем сообщение пользователя
@@ -93,5 +95,4 @@ def main():
     print("✅ Бот запущен.")
     app.run_polling()
 
-if __name__ == "__main__":
-    main()
+if __name
