@@ -1,0 +1,5 @@
+python-telegram-bot==20.3
+openai==1.41.1
+python-dotenv
+requests
+beautifulsoup4
