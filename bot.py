@@ -1,4 +1,4 @@
-# bot.py — Telegram бот с OpenAI Assistants API
+# bot.py — минимальный рабочий шаблон
 import os
 import asyncio
 import logging
@@ -9,35 +9,34 @@ from openai import OpenAI
 
 # ---------- Настройки ----------
 load_dotenv()
-
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OPENAI_KEY = os.getenv("OPENAI_KEY")
 ASSISTANT_ID = os.getenv("OPENAI_ASSISTANT_ID")
 MODEL_NAME = os.getenv("OPENAI_MODEL") or "gpt-4.1-mini"
-MAX_INPUT_LENGTH = 1000
-MAX_MESSAGE_LENGTH = 4000  # Максимальная длина одного сообщения Telegram
+MAX_MESSAGE_LENGTH = 4000
 
 if not BOT_TOKEN or not OPENAI_KEY or not ASSISTANT_ID:
     raise SystemExit("❌ Проверь BOT_TOKEN, OPENAI_KEY и ASSISTANT_ID в .env")
 
 logging.basicConfig(level=logging.INFO)
-logging.getLogger("httpx").setLevel(logging.WARNING)  # чтобы INFO-запросы не выводились
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 client = OpenAI(api_key=OPENAI_KEY)
 
 # ---------- Команды ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Привет! Задай свой вопрос — я постараюсь ответить понятно и по существу."
+        "👋 Привет! Я информационный бот.\n"
+        "Задай свой вопрос — я постараюсь ответить понятно и по существу."
     )
 
 # ---------- Обработка сообщений ----------
 async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = update.message.text[:MAX_INPUT_LENGTH]
+    user_message = update.message.text
     await update.message.chat.send_action(action="typing")
 
     try:
-        # Создаём новый thread для каждого запроса (не сохраняем предыдущий контекст)
+        # Создаём новый thread для каждого запроса
         thread = client.beta.threads.create()
 
         # Добавляем сообщение пользователя
@@ -47,22 +46,12 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
             content=user_message
         )
 
-        # Запуск ассистента с повтором при временной ошибке
-        run = None
-        for attempt in range(3):
-            try:
-                run = client.beta.threads.runs.create(
-                    thread_id=thread.id,
-                    assistant_id=ASSISTANT_ID,
-                    model=MODEL_NAME
-                )
-                break
-            except Exception as e:
-                logging.warning(f"Попытка {attempt+1} неудачна: {e}")
-                await asyncio.sleep(1)
-        if run is None:
-            await update.message.reply_text("⚠️ Не удалось обработать запрос после 3 попыток.")
-            return
+        # Запускаем ассистента
+        run = client.beta.threads.runs.create(
+            thread_id=thread.id,
+            assistant_id=ASSISTANT_ID,
+            model=MODEL_NAME
+        )
 
         # Ждём завершения ассистента
         while True:
@@ -79,7 +68,7 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_text = msg.content[0].text.value or reply_text
                 break
 
-        # Разбиваем длинный ответ на части
+        # Делим длинный ответ на части
         for i in range(0, len(reply_text), MAX_MESSAGE_LENGTH):
             await update.message.reply_text(reply_text[i:i+MAX_MESSAGE_LENGTH])
 
@@ -95,4 +84,5 @@ def main():
     print("✅ Бот запущен.")
     app.run_polling()
 
-if __name
+if __name__ == "__main__":
+    main()
