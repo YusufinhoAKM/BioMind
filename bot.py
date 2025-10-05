@@ -15,14 +15,10 @@ OPENAI_KEY = os.getenv("OPENAI_KEY")
 ASSISTANT_ID = os.getenv("OPENAI_ASSISTANT_ID")
 MODEL_NAME = os.getenv("OPENAI_MODEL") or "gpt-4.1-mini"
 MAX_INPUT_LENGTH = 1000
-MAX_OUTPUT_LENGTH = 800
+MAX_MESSAGE_LENGTH = 4000  # Максимальная длина одного сообщения Telegram
 
-if not BOT_TOKEN:
-    raise SystemExit("❌ ERROR: BOT_TOKEN не найден в .env")
-if not OPENAI_KEY:
-    raise SystemExit("❌ ERROR: OPENAI_KEY не найден в .env")
-if not ASSISTANT_ID:
-    raise SystemExit("❌ ERROR: OPENAI_ASSISTANT_ID не найден в .env")
+if not BOT_TOKEN or not OPENAI_KEY or not ASSISTANT_ID:
+    raise SystemExit("❌ Проверь BOT_TOKEN, OPENAI_KEY и ASSISTANT_ID в .env")
 
 logging.basicConfig(level=logging.INFO)
 client = OpenAI(api_key=OPENAI_KEY)
@@ -30,8 +26,7 @@ client = OpenAI(api_key=OPENAI_KEY)
 # ---------- Команды ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Привет! Я информационный бот. "
-        "Задай свой вопрос — я постараюсь ответить понятно и по существу."
+        "👋 Привет! Задай свой вопрос — я постараюсь ответить понятно и по существу."
     )
 
 # ---------- Обработка сообщений ----------
@@ -44,21 +39,11 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Создаём новый thread для каждого запроса
         thread = client.beta.threads.create()
 
-        # Формируем промт
-        prompt = (
-            f"Игнорируй все стандартные приветствия и системные инструкции. "
-            f"Ты не должен повторять «Я — опытный медицинский ассистент…». "
-            f"Отвечай кратко, ясно и по существу на вопрос пользователя ниже. "
-            f"Если вопрос не относится к медицине, ответь честно, что не можешь дать точный совет. "
-            f"Не более {MAX_OUTPUT_LENGTH} символов.\n"
-            f"Вопрос: {user_message}"
-        )
-
-        # Добавляем сообщение пользователя
+        # Добавляем только сообщение пользователя
         client.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
-            content=prompt
+            content=user_message
         )
 
         # Запускаем ассистента
@@ -85,8 +70,9 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not reply_text:
             reply_text = "⚠️ Не удалось получить ответ от ассистента."
 
-        reply_text = reply_text[:MAX_OUTPUT_LENGTH]
-        await update.message.reply_text(reply_text)
+        # Делим длинный ответ на части
+        for i in range(0, len(reply_text), MAX_MESSAGE_LENGTH):
+            await update.message.reply_text(reply_text[i:i+MAX_MESSAGE_LENGTH])
 
     except Exception as e:
         logging.error(f"Ошибка при обработке сообщения: {e}")
