@@ -1,6 +1,6 @@
 # bot.py — Telegram бот с OpenAI Assistants API
 import os
-import time
+import asyncio
 import logging
 from dotenv import load_dotenv
 from telegram import Update
@@ -32,45 +32,52 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- Обработка сообщений ----------
 async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text[:MAX_INPUT_LENGTH]
-
     await update.message.chat.send_action(action="typing")
 
     try:
         # Создаём новый thread для каждого запроса
         thread = client.beta.threads.create()
 
-        # Добавляем только сообщение пользователя
+        # Добавляем сообщение пользователя
         client.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
             content=user_message
         )
 
-        # Запускаем ассистента
-        run = client.beta.threads.runs.create(
-            thread_id=thread.id,
-            assistant_id=ASSISTANT_ID,
-            model=MODEL_NAME
-        )
+        # Запуск ассистента с повтором при временной ошибке
+        run = None
+        for attempt in range(3):
+            try:
+                run = client.beta.threads.runs.create(
+                    thread_id=thread.id,
+                    assistant_id=ASSISTANT_ID,
+                    model=MODEL_NAME
+                )
+                break
+            except Exception as e:
+                logging.warning(f"Попытка {attempt+1} неудачна: {e}")
+                await asyncio.sleep(1)
+        if run is None:
+            await update.message.reply_text("⚠️ Не удалось обработать запрос после 3 попыток.")
+            return
 
-        # Ждём завершения
+        # Ждём завершения ассистента
         while True:
             run_status = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
             if run_status.status in ["completed", "failed", "cancelled"]:
                 break
-            time.sleep(1)
+            await asyncio.sleep(1)
 
         # Получаем ответ
         messages = client.beta.threads.messages.list(thread_id=thread.id)
-        reply_text = None
+        reply_text = "⚠️ Не удалось получить ответ от ассистента."
         for msg in reversed(messages.data):
             if msg.role == "assistant" and msg.content:
-                reply_text = msg.content[0].text.value
+                reply_text = msg.content[0].text.value or reply_text
                 break
-        if not reply_text:
-            reply_text = "⚠️ Не удалось получить ответ от ассистента."
 
-        # Делим длинный ответ на части
+        # Разбиваем длинный ответ на части
         for i in range(0, len(reply_text), MAX_MESSAGE_LENGTH):
             await update.message.reply_text(reply_text[i:i+MAX_MESSAGE_LENGTH])
 
